@@ -58,9 +58,10 @@ public class VisitsRepository : IVisitsRepository
                             licenseNumber = reader.GetString(reader.GetOrdinal("licence_number")),
                             mechanicID = reader.GetInt32(reader.GetOrdinal("mechanic_id")),
                         };
+                        var a = reader.GetFloat(reader.GetOrdinal("service_fee"));
                         var temp = new VisitServiceDTO()
                         {
-                            serviceFee = reader.GetFloat(reader.GetOrdinal("service_fee")),
+                            serviceFee =  Convert.ToSingle(a),
                             name = reader.GetString(reader.GetOrdinal("name")),
                         };
                         visitResponseDto.VisitServices.Add(temp);
