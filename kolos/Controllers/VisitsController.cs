@@ -1,4 +1,5 @@
-﻿using kolos.Services;
+﻿using kolos.DTOs;
+using kolos.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace kolos.Controllers;
@@ -16,9 +17,18 @@ public class VisitsController:ControllerBase
     }
 
     [HttpGet("{id}")]
-    public async Task<IActionResult> GetVisitsViaId(int id, CancellationToken cancellationToken)
+    public async Task<IActionResult> GetVisitsViaIdAsync(int id, CancellationToken cancellationToken)
     {
         var visits = await _visitService.GetVisitsAsync(id, cancellationToken);
         return Ok(visits);
     }
+
+    [HttpPost]
+    public async Task<IActionResult> CreateNewServiceAsync(ServiceCreateRequestDTO service, CancellationToken cancellationToken)
+    {
+        var createdId = await _visitService.CreateNewServiceAsync(service, cancellationToken);
+        
+        return Created("/api/visits/", new { id = createdId });
+    }
+    
 }

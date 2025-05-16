@@ -1,4 +1,5 @@
 ﻿using kolos.DTOs;
+using kolos.Exceptions;
 using Microsoft.Data.SqlClient;
 
 namespace kolos.Repositories;
@@ -71,5 +72,150 @@ public class VisitsRepository : IVisitsRepository
 
         }
         return visitResponseDto;
+    }
+
+    public async Task<int> CreateNewServiceAsync(AddServiceToDB_DTO serviceToDbDto, CancellationToken cancellationToken)
+    {
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            //--------- updateing fulfill date
+            var query1 = @"INSERT INTO [dbo].[Visit] (visit_id,client_id, mechanic_id,date)
+                            VALUES (@visit_id, @client_id, @mechanic_id, @date);
+                            SELECT SCOPE_IDENTITY();";
+            
+            await using var checkCommand = new SqlCommand(query1, connection, (SqlTransaction)transaction);
+            checkCommand.Parameters.AddWithValue("@date", serviceToDbDto.date);
+            checkCommand.Parameters.AddWithValue("@visit_id", serviceToDbDto.visitId);
+            checkCommand.Parameters.AddWithValue("@client_id", serviceToDbDto.clientId);
+            checkCommand.Parameters.AddWithValue("@mechanic_id", serviceToDbDto.mechnicId);
+
+            var updated = await checkCommand.ExecuteScalarAsync(cancellationToken);
+            
+            int insertedId = Convert.ToInt32(updated);
+            
+            
+            if(insertedId <= 0)
+                throw new Exception("insert to visit failed");
+
+            
+            //----------- insert into product-warehouse
+
+            for (int i = 0; i < serviceToDbDto.services.Count; i++)
+            {
+
+                var insertQuery =
+                    @"INSERT INTO [dbo].[Visit_Service] (visitId,serviceId, serviceFee)
+                            VALUES (@visitId, @serviceId, @serviceFee);
+                            SELECT SCOPE_IDENTITY();";
+
+                await using var insertCommand = new SqlCommand(insertQuery, connection, (SqlTransaction)transaction);
+                insertCommand.Parameters.AddWithValue("@visitId", serviceToDbDto.visitId);
+                insertCommand.Parameters.AddWithValue("@serviceId", serviceToDbDto.services[i]);
+                insertCommand.Parameters.AddWithValue("@serviceFee", serviceToDbDto.visitServices[i].serviceFee);
+                
+                var insertedIdObj = await insertCommand.ExecuteScalarAsync(cancellationToken);
+                
+                await transaction.CommitAsync(cancellationToken);
+            }
+
+            return insertedId;
+        }
+        catch (Exception a)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw new Exception($"Update failed: "+a.Message);
+        }
+    }
+
+    public async Task<bool> DoesVisitExist(int serviceVisitId, CancellationToken cancellationToken)
+    {
+        await using (var connection = new SqlConnection(_connectionString)){
+            
+            await connection.OpenAsync(cancellationToken);
+
+            var query = @"SELECT COUNT(1) FROM [dbo].[Visit] WHERE visit_id = @id";
+            
+            await using (var command = new SqlCommand(query, connection)){
+                command.Parameters.AddWithValue("@id", serviceVisitId);
+                
+                var result = await command.ExecuteScalarAsync(cancellationToken);
+                
+                return Convert.ToInt32(result) > 0;
+            }
+        }
+    }
+
+    public async Task<bool> DoesClientExist(int serviceClientId, CancellationToken cancellationToken)
+    {
+        await using (var connection = new SqlConnection(_connectionString)){
+            
+            await connection.OpenAsync(cancellationToken);
+
+            var query = @"SELECT COUNT(1) FROM [dbo].[Client] WHERE client_id = @id";
+            
+            await using (var command = new SqlCommand(query, connection)){
+                command.Parameters.AddWithValue("@id", serviceClientId);
+                
+                var result = await command.ExecuteScalarAsync(cancellationToken);
+                
+                return Convert.ToInt32(result) > 0;
+            }
+        }
+    }
+
+    public async Task<int> GetMechnicId(string serviceMechnicLicenceNumber, CancellationToken cancellationToken)
+    {
+        await using (var connection = new SqlConnection(_connectionString)){
+            
+            await connection.OpenAsync(cancellationToken);
+
+            var query = @"
+                        SELECT mechanic_id
+                        FROM [dbo].[Mechanic] 
+                        Where licence_number = @ln";
+            
+            await using (var command = new SqlCommand(query, connection)){
+                command.Parameters.AddWithValue("@ln", serviceMechnicLicenceNumber);
+                
+                var result = await command.ExecuteScalarAsync(cancellationToken);
+
+                if (result.Equals(DBNull.Value))
+                {
+                    throw new NotFoundException("cant get mechnic id");
+                }
+                
+                return Convert.ToInt32(result);
+            }
+        }
+    }
+
+    public async Task<int> GetServiceId(string name, CancellationToken cancellationToken)
+    {
+        await using (var connection = new SqlConnection(_connectionString)){
+            
+            await connection.OpenAsync(cancellationToken);
+
+            var query = @"
+                        SELECT service_id
+                        FROM [dbo].[Service] 
+                        Where name = @ln";
+            
+            await using (var command = new SqlCommand(query, connection)){
+                command.Parameters.AddWithValue("@ln", name);
+                
+                var result = await command.ExecuteScalarAsync(cancellationToken);
+
+                if (result.Equals(DBNull.Value))
+                {
+                    throw new NotFoundException("cant get service id");
+                }
+                
+                return Convert.ToInt32(result);
+            }
+        }
     }
 }
